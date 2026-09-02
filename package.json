@@ -1,0 +1,12 @@
+{
+  "name": "grove-lead-widget",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend (Vercel serverless functions) + embeddable front-end for The Grove's custom lead-capture widget.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}

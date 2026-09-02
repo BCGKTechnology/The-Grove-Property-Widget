@@ -1,0 +1,799 @@
+/**
+ * The Grove — Custom Lead Widget
+ * ------------------------------
+ * Self-contained embeddable script. Paste this into the RentCafe website
+ * builder's HTML box as:
+ *
+ *   <script src="https://YOUR-DEPLOYMENT.vercel.app/widget.js" defer></script>
+ *
+ * It renders itself into a Shadow DOM so its styles can't collide with (or
+ * be overridden by) RentCafe's own page CSS.
+ *
+ * TODO(confirm) markers below call out placeholder values that need real
+ * answers from BCGK before launch (brand colors, dropdown option lists,
+ * privacy policy URL, API base URL).
+ */
+(function () {
+  'use strict';
+
+  // Auto-detect the backend URL from wherever this script itself is being
+  // served from. Since widget.js and the /api/* functions are deployed
+  // together as one Vercel project, whatever domain loaded this script IS
+  // the right backend to call — no manual URL to copy/paste or keep in
+  // sync. Must be read synchronously, right here at the top of the script
+  // (document.currentScript is only reliable during initial execution —
+  // this still works with the `defer` attribute, just not from inside a
+  // later callback). Falls back to CONFIG.apiBaseUrl below only if that
+  // detection fails for some reason (e.g. the script was inlined instead
+  // of loaded via a real <script src>).
+  var detectedOrigin = null;
+  try {
+    if (document.currentScript && document.currentScript.src) {
+      detectedOrigin = new URL(document.currentScript.src).origin;
+    }
+  } catch (e) {
+    /* fall through to the CONFIG fallback below */
+  }
+
+  // ---------------------------------------------------------------------
+  // Configuration — edit these once real answers are confirmed.
+  // ---------------------------------------------------------------------
+  const CONFIG = {
+    // Auto-detected above from this script's own <script src> in the
+    // normal case. Only used as a fallback, e.g. for local testing where
+    // widget.js isn't loaded the normal way — set a real URL here if you
+    // ever see "REPLACE-ME" show up in a network request.
+    apiBaseUrl: detectedOrigin || 'https://REPLACE-ME.vercel.app',
+
+    // Contact info shown on the "Call or Text Us" tile. Reused from the
+    // existing (EliseAI) widget's own content, which is presumably The
+    // Grove's real leasing-office number and hours — confirm before launch.
+    // TODO(confirm): terms & conditions URL (privacyPolicyUrl is shared
+    // with the other two forms, defined below).
+    contact: {
+      phoneDisplay: '+1 (916) 831-7034',
+      phoneHref: 'tel:+19168317034',
+      officeHours: [
+        ['Monday', '9:00am – 5:00pm'],
+        ['Tuesday', '9:00am – 5:00pm'],
+        ['Wednesday', '9:00am – 5:00pm'],
+        ['Thursday', '9:00am – 5:00pm'],
+        ['Friday', '9:00am – 5:00pm'],
+        ['Saturday', '9:00am – 5:00pm'],
+        ['Sunday', '9:00am – 5:00pm'],
+      ],
+      termsUrl: 'https://www.example.com/terms-and-conditions',
+    },
+
+    // TODO(confirm): real brand hex codes / fonts from BCGK. These are
+    // placeholders picked to loosely match the existing site's green.
+    theme: {
+      primary: '#2f6b4a',
+      primaryDark: '#234f37',
+      textOnPrimary: '#ffffff',
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    },
+
+    // TODO(confirm): real dropdown option lists.
+    bedroomOptions: ['Studio', '1 Bedroom', '2 Bedroom', '3 Bedroom', 'Not sure yet'],
+    hearAboutUsOptions: [
+      'Google Search',
+      'Social Media',
+      'Referral',
+      'Drove/Walked By',
+      'Online Listing Site',
+      'Other',
+    ],
+
+    // TODO(confirm): real privacy policy URL.
+    privacyPolicyUrl: 'https://www.example.com/privacy-policy',
+
+    // Static tour time slots (community-local time). No live availability
+    // check against agent calendars — see requirements doc for why.
+    tourTimeSlots: [
+      '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+      '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
+      '16:00', '16:30',
+    ],
+
+    // Whether the modal auto-opens on every page load (confirmed decision).
+    autoOpenOnLoad: true,
+  };
+
+  function formatTime(hhmm) {
+    const [h, m] = hhmm.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+  }
+
+  // ---------------------------------------------------------------------
+  // Icons (inline SVG, currentColor so they pick up theme colors)
+  // ---------------------------------------------------------------------
+  const ICONS = {
+    support:
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3a9 9 0 0 0-9 9v4.5A2.5 2.5 0 0 0 5.5 19H7v-6H4.5v-1a7.5 7.5 0 0 1 15 0v1H17v6h1.5a2.5 2.5 0 0 0 2.5-2.5V12a9 9 0 0 0-9-9Z" fill="currentColor"/><rect x="4.5" y="12" width="3" height="5.5" rx="1" fill="currentColor"/><rect x="16.5" y="12" width="3" height="5.5" rx="1" fill="currentColor"/></svg>',
+    close:
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    back:
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    mail:
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="m4 7 8 6 8-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    calendar:
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="5" width="17" height="15.5" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    phone:
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5 3.5h3l1.5 4-2 1.5a11 11 0 0 0 5.5 5.5l1.5-2 4 1.5v3a1.5 1.5 0 0 1-1.6 1.5A16.5 16.5 0 0 1 5 6.1 1.5 1.5 0 0 1 6.5 3.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+  };
+
+  // ---------------------------------------------------------------------
+  // Shadow DOM host + styles
+  // ---------------------------------------------------------------------
+  const host = document.createElement('div');
+  host.id = 'grove-widget-host';
+  document.body.appendChild(host);
+  const root = host.attachShadow({ mode: 'open' });
+
+  const style = document.createElement('style');
+  style.textContent = `
+    :host { all: initial; }
+    * { box-sizing: border-box; font-family: ${CONFIG.theme.fontFamily}; }
+
+    .fab {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: ${CONFIG.theme.primary};
+      color: ${CONFIG.theme.textOnPrimary};
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      z-index: 2147483000;
+      transition: transform 0.15s ease;
+    }
+    .fab:hover { transform: scale(1.06); }
+    .fab svg { width: 28px; height: 28px; }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      /* No dimming layer behind the modal, per BCGK's reference design —
+         this stays a full-screen, invisible click-catcher (for "click
+         outside the panel to close") rather than a visible dark backdrop. */
+      background: transparent;
+      z-index: 2147483001;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      padding: 24px;
+    }
+    .overlay[hidden], .fab[hidden] { display: none !important; }
+
+    .panel {
+      background: #fff;
+      width: 360px;
+      max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 48px);
+      border-radius: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+      animation: grove-pop 0.18s ease;
+    }
+    @keyframes grove-pop {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .panel-header {
+      background: ${CONFIG.theme.primary};
+      color: ${CONFIG.theme.textOnPrimary};
+      padding: 20px;
+      position: relative;
+    }
+    .panel-header h2 { margin: 0 0 4px; font-size: 18px; }
+    .panel-header p { margin: 0; font-size: 13px; opacity: 0.9; }
+    .panel-header .title-wrap { padding: 0 4px; }
+
+    /* Plain (white) header variant used only by the Call/Text view, to
+       match BCGK's reference design for that screen specifically. */
+    .panel-header.plain {
+      background: #fff;
+      color: #1c2a22;
+      border-bottom: 1px solid #ececec;
+    }
+    .panel-header.plain h2 { font-size: 16px; font-weight: 700; }
+    .panel-header.plain .title-wrap { padding-left: 30px; padding-right: 30px; }
+
+    .icon-btn {
+      position: absolute;
+      top: 14px;
+      background: transparent;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      border-radius: 6px;
+    }
+    .icon-btn:focus-visible { outline: 2px solid #fff; }
+    .panel-header.plain .icon-btn:focus-visible { outline-color: ${CONFIG.theme.primary}; }
+    .icon-btn svg { width: 20px; height: 20px; }
+    .close-btn { right: 12px; }
+    .back-btn { left: 12px; }
+
+    .panel-body {
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .tile-list { display: flex; flex-direction: column; gap: 10px; }
+    .tile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      text-align: left;
+      background: #f4f6f5;
+      border: 1px solid #e3e7e5;
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: #1c2a22;
+    }
+    .tile:hover { background: #eaefec; }
+    .tile .tile-icon {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      background: ${CONFIG.theme.primary};
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      flex: none;
+    }
+    .tile .tile-icon svg { width: 18px; height: 18px; }
+    .tile .chevron { margin-left: auto; opacity: 0.5; }
+
+    form { display: flex; flex-direction: column; gap: 12px; }
+    .field-row { display: flex; gap: 10px; }
+    .field { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    label { font-size: 12.5px; font-weight: 600; color: #3a463f; }
+    input, select, textarea {
+      font-size: 14px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #d3d9d6;
+      background: #f4f6f5;
+      color: #1c2a22;
+      width: 100%;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: 2px solid ${CONFIG.theme.primary};
+      outline-offset: 1px;
+    }
+    textarea { resize: vertical; min-height: 70px; }
+
+    /* Honeypot field — hidden from real visitors, still reachable by bots
+       that fill every field programmatically. */
+    .hp-field {
+      position: absolute !important;
+      left: -9999px !important;
+      width: 1px; height: 1px;
+      overflow: hidden;
+    }
+
+    .consent {
+      font-size: 11.5px;
+      color: #5a655e;
+      line-height: 1.4;
+    }
+    .consent a { color: ${CONFIG.theme.primary}; }
+
+    .submit-btn {
+      background: ${CONFIG.theme.primaryDark};
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14.5px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .submit-btn:disabled { opacity: 0.6; cursor: default; }
+
+    .status-msg {
+      font-size: 13px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-top: 4px;
+    }
+    .status-msg.success { background: #e6f4ea; color: #1e5e34; }
+    .status-msg.error { background: #fbe8e6; color: #8a2c22; }
+
+    .iframe-wrap { display: flex; flex-direction: column; gap: 10px; }
+    .iframe-wrap iframe {
+      width: 100%;
+      height: 420px;
+      border: none;
+      border-radius: 10px;
+      background: #fff;
+    }
+    .iframe-fallback { font-size: 12.5px; color: #5a655e; text-align: center; }
+    .iframe-fallback a { color: ${CONFIG.theme.primary}; }
+
+    .contact-phone {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .contact-phone .phone-icon { color: #1c2a22; display: flex; }
+    .contact-phone .phone-icon svg { width: 17px; height: 17px; }
+    .contact-phone a {
+      color: #1c2a22;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: underline;
+    }
+
+    .office-hours h3, .send-text h3 {
+      font-size: 14px;
+      margin: 0 0 10px;
+      color: #1c2a22;
+    }
+    .hours-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .hours-table td {
+      padding: 5px 0;
+      font-size: 13.5px;
+      color: #3a463f;
+    }
+    .hours-table td:last-child { text-align: right; color: #1c2a22; }
+
+    .send-text-row { display: flex; gap: 8px; }
+    .send-text-row input {
+      flex: 1;
+      background: #f4f6f5;
+    }
+    .send-text-row button {
+      background: #1c2a22;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0 18px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .send-text-row button:disabled { opacity: 0.6; cursor: default; }
+
+    @media (max-width: 420px) {
+      .overlay { padding: 0; align-items: flex-end; justify-content: stretch; }
+      .panel { width: 100%; max-width: 100%; border-radius: 16px 16px 0 0; }
+    }
+  `;
+  root.appendChild(style);
+
+  // ---------------------------------------------------------------------
+  // FAB
+  // ---------------------------------------------------------------------
+  const fab = document.createElement('button');
+  fab.className = 'fab';
+  fab.type = 'button';
+  fab.setAttribute('aria-label', 'Open contact options');
+  fab.innerHTML = ICONS.support;
+  root.appendChild(fab);
+
+  // ---------------------------------------------------------------------
+  // Overlay / panel
+  // ---------------------------------------------------------------------
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.hidden = true;
+
+  const panel = document.createElement('div');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-label', 'Contact The Grove');
+  panel.className = 'panel';
+  overlay.appendChild(panel);
+  root.appendChild(overlay);
+
+  let lastFocusedElement = null;
+
+  // The "Call or Text Us" view intentionally replicates a plain, left-
+  // aligned header (no green band, no subtitle) per BCGK's reference design,
+  // rather than the branded header used for the other two views.
+  const PLAIN_HEADER_VIEWS = { call: true };
+
+  function render(view) {
+    panel.innerHTML = '';
+    const isPlain = !!PLAIN_HEADER_VIEWS[view];
+    const header = document.createElement('div');
+    header.className = 'panel-header' + (isPlain ? ' plain' : '');
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'icon-btn close-btn';
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.innerHTML = ICONS.close;
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+
+    if (view !== 'tiles') {
+      const backBtn = document.createElement('button');
+      backBtn.className = 'icon-btn back-btn';
+      backBtn.type = 'button';
+      backBtn.setAttribute('aria-label', 'Back');
+      backBtn.innerHTML = ICONS.back;
+      backBtn.addEventListener('click', () => render('tiles'));
+      header.appendChild(backBtn);
+    }
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'title-wrap';
+    titleWrap.style.textAlign = isPlain ? 'left' : 'center';
+    const titles = {
+      tiles: ['Contact The Grove', "Choose how you'd like to connect"],
+      email: ['Email an Agent', "We'll get back to you shortly"],
+      tour: ['Schedule a Tour', 'Guided tour with an agent'],
+      call: ['Contact Our Leasing Team', ''],
+    };
+    const [title, subtitle] = titles[view];
+    titleWrap.innerHTML = `<h2>${title}</h2>${subtitle ? `<p>${subtitle}</p>` : ''}`;
+    header.appendChild(titleWrap);
+    panel.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'panel-body';
+    panel.appendChild(body);
+
+    if (view === 'tiles') renderTiles(body);
+    if (view === 'email') renderEmailForm(body);
+    if (view === 'tour') renderTourForm(body);
+    if (view === 'call') renderCallText(body);
+
+    const focusable = panel.querySelector(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable) focusable.focus();
+  }
+
+  function renderTiles(body) {
+    const list = document.createElement('div');
+    list.className = 'tile-list';
+
+    const tiles = [
+      { view: 'email', icon: ICONS.mail, label: 'Email an Agent' },
+      { view: 'tour', icon: ICONS.calendar, label: 'Book a Tour' },
+      { view: 'call', icon: ICONS.phone, label: 'Call or Text Us' },
+    ];
+
+    tiles.forEach((t) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tile';
+      btn.innerHTML = `<span class="tile-icon">${t.icon}</span><span>${t.label}</span><span class="chevron">›</span>`;
+      btn.addEventListener('click', () => render(t.view));
+      list.appendChild(btn);
+    });
+
+    body.appendChild(list);
+  }
+
+  function consentHtml() {
+    return `By submitting, you consent to be contacted by The Grove and agree to our
+      <a href="${CONFIG.privacyPolicyUrl}" target="_blank" rel="noopener">privacy policy</a>.`;
+  }
+
+  function honeypotHtml() {
+    return `
+      <div class="hp-field" aria-hidden="true">
+        <label for="grove-website">Leave this field blank</label>
+        <input id="grove-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+      </div>
+    `;
+  }
+
+  function optionsHtml(options) {
+    return (
+      `<option value="">Select…</option>` +
+      options.map((o) => `<option value="${o}">${o}</option>`).join('')
+    );
+  }
+
+  async function submitForm({ endpoint, payload, submitBtn, statusEl, successMessage }) {
+    submitBtn.disabled = true;
+    const originalLabel = submitBtn.textContent;
+    submitBtn.textContent = 'Sending…';
+    statusEl.textContent = '';
+    statusEl.className = 'status-msg';
+    statusEl.hidden = true;
+
+    try {
+      const res = await fetch(`${CONFIG.apiBaseUrl}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+
+      statusEl.textContent = successMessage;
+      statusEl.className = 'status-msg success';
+      statusEl.hidden = false;
+      submitBtn.textContent = 'Sent ✓';
+    } catch (err) {
+      statusEl.textContent =
+        err.message || 'We could not send that. Please call or text us instead.';
+      statusEl.className = 'status-msg error';
+      statusEl.hidden = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalLabel;
+    }
+  }
+
+  function renderEmailForm(body) {
+    body.innerHTML = `
+      <form id="grove-email-form" novalidate>
+        ${honeypotHtml()}
+        <div class="field-row">
+          <div class="field">
+            <label for="grove-e-first">First name *</label>
+            <input id="grove-e-first" name="firstName" required />
+          </div>
+          <div class="field">
+            <label for="grove-e-last">Last name *</label>
+            <input id="grove-e-last" name="lastName" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="grove-e-email">Email *</label>
+          <input id="grove-e-email" name="email" type="email" required />
+        </div>
+        <div class="field">
+          <label for="grove-e-phone">Phone *</label>
+          <input id="grove-e-phone" name="phone" type="tel" required />
+        </div>
+        <div class="field">
+          <label for="grove-e-hear">How did you hear about us?</label>
+          <select id="grove-e-hear" name="hearAboutUs">${optionsHtml(
+            CONFIG.hearAboutUsOptions
+          )}</select>
+        </div>
+        <div class="field">
+          <label for="grove-e-msg">Message</label>
+          <textarea id="grove-e-msg" name="message" placeholder="Your message..."></textarea>
+        </div>
+        <p class="consent">${consentHtml()}</p>
+        <div class="status-msg" hidden></div>
+        <button type="submit" class="submit-btn">Send</button>
+      </form>
+    `;
+
+    const form = body.querySelector('#grove-email-form');
+    const statusEl = body.querySelector('.status-msg');
+    const submitBtn = form.querySelector('.submit-btn');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      submitForm({
+        endpoint: '/api/email-agent',
+        payload: data,
+        submitBtn,
+        statusEl,
+        successMessage: "Thanks! An agent will be in touch shortly.",
+      });
+    });
+  }
+
+  function renderTourForm(body) {
+    const today = new Date().toISOString().slice(0, 10);
+    body.innerHTML = `
+      <form id="grove-tour-form" novalidate>
+        ${honeypotHtml()}
+        <div class="field-row">
+          <div class="field">
+            <label for="grove-t-date">Date *</label>
+            <input id="grove-t-date" name="tourDate" type="date" min="${today}" required />
+          </div>
+          <div class="field">
+            <label for="grove-t-time">Time *</label>
+            <select id="grove-t-time" name="tourTime" required>
+              <option value="">Select…</option>
+              ${CONFIG.tourTimeSlots
+                .map((t) => `<option value="${t}">${formatTime(t)}</option>`)
+                .join('')}
+            </select>
+          </div>
+        </div>
+        <p class="consent" style="margin:-4px 0 0;">All times shown are in the community's local time (PDT).</p>
+        <div class="field-row">
+          <div class="field">
+            <label for="grove-t-first">First name *</label>
+            <input id="grove-t-first" name="firstName" required />
+          </div>
+          <div class="field">
+            <label for="grove-t-last">Last name *</label>
+            <input id="grove-t-last" name="lastName" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="grove-t-email">Email *</label>
+          <input id="grove-t-email" name="email" type="email" required />
+        </div>
+        <div class="field">
+          <label for="grove-t-phone">Phone *</label>
+          <input id="grove-t-phone" name="phone" type="tel" required />
+        </div>
+        <div class="field">
+          <label for="grove-t-bed">Bedroom preference (optional)</label>
+          <select id="grove-t-bed" name="bedroomPreference">${optionsHtml(
+            CONFIG.bedroomOptions
+          )}</select>
+        </div>
+        <div class="field">
+          <label for="grove-t-hear">How did you hear about us?</label>
+          <select id="grove-t-hear" name="hearAboutUs">${optionsHtml(
+            CONFIG.hearAboutUsOptions
+          )}</select>
+        </div>
+        <p class="consent">We'll send a confirmation and any follow-ups to your email address; reply to that email to make changes. ${consentHtml()}</p>
+        <div class="status-msg" hidden></div>
+        <button type="submit" class="submit-btn">Schedule tour</button>
+      </form>
+    `;
+
+    const form = body.querySelector('#grove-tour-form');
+    const statusEl = body.querySelector('.status-msg');
+    const submitBtn = form.querySelector('.submit-btn');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      submitForm({
+        endpoint: '/api/book-tour',
+        payload: data,
+        submitBtn,
+        statusEl,
+        successMessage: 'Tour requested! A confirmation email is on its way.',
+      });
+    });
+  }
+
+  function renderCallText(body) {
+    const c = CONFIG.contact;
+    body.innerHTML = `
+      <div class="contact-phone">
+        <span class="phone-icon">${ICONS.phone}</span>
+        <a href="${c.phoneHref}">${c.phoneDisplay}</a>
+      </div>
+
+      <div class="office-hours">
+        <h3>Office Hours</h3>
+        <table class="hours-table">
+          ${c.officeHours
+            .map(([day, hours]) => `<tr><td>${day}</td><td>${hours}</td></tr>`)
+            .join('')}
+        </table>
+      </div>
+
+      <div class="send-text">
+        <h3>Send Us a Text</h3>
+        <form id="grove-call-form" novalidate>
+          ${honeypotHtml()}
+          <div class="send-text-row">
+            <input id="grove-c-phone" name="phone" type="tel" placeholder="Enter phone" required aria-label="Your phone number" />
+            <button type="submit">SEND</button>
+          </div>
+          <div class="status-msg" hidden></div>
+          <p class="consent" style="margin-top:12px;">
+            By providing your number and clicking send, you consent to receive recurring
+            marketing calls and voice and text messages from or on behalf of BCGK
+            Communities LLC at this number using artificial voice or an autodialer.
+            Messages may be AI or human generated. Consent is not required to lease at
+            this property. Msg &amp; Data rates may apply. You consent to this
+            <a href="${CONFIG.privacyPolicyUrl}" target="_blank" rel="noopener">privacy policy</a>
+            and these <a href="${c.termsUrl}" target="_blank" rel="noopener">terms and conditions</a>,
+            including having your number and communications recorded and used by a third party.
+          </p>
+        </form>
+      </div>
+    `;
+
+    const form = body.querySelector('#grove-call-form');
+    const statusEl = body.querySelector('.status-msg');
+    const submitBtn = form.querySelector('button[type="submit"]');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      // Extra context for EliseAI's lead-attribution fields (referrer,
+      // query_params) — see lib/eliseai.js on the backend.
+      data.referrer = document.referrer || '';
+      try {
+        data.queryParams = Object.fromEntries(new URLSearchParams(window.location.search));
+      } catch (err) {
+        data.queryParams = {};
+      }
+      submitForm({
+        endpoint: '/api/call-text',
+        payload: data,
+        submitBtn,
+        statusEl,
+        successMessage: "Thanks! We'll text or call you shortly.",
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Open / close + accessibility (focus trap, ESC, focus restore)
+  // ---------------------------------------------------------------------
+  function openModal() {
+    lastFocusedElement = document.activeElement;
+    overlay.hidden = false;
+    render('tiles');
+    document.addEventListener('keydown', onKeydown, true);
+  }
+
+  function closeModal() {
+    overlay.hidden = true;
+    document.removeEventListener('keydown', onKeydown, true);
+    if (lastFocusedElement && lastFocusedElement.focus) lastFocusedElement.focus();
+  }
+
+  function onKeydown(e) {
+    if (e.key === 'Escape') {
+      closeModal();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const focusables = Array.from(
+        panel.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const activeInShadow = root.activeElement;
+
+      if (e.shiftKey && activeInShadow === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && activeInShadow === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
+
+  fab.addEventListener('click', openModal);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeModal();
+  });
+
+  // ---------------------------------------------------------------------
+  // Auto-open on every page load (confirmed behavior — see requirements doc
+  // for the tradeoffs of this choice).
+  // ---------------------------------------------------------------------
+  if (CONFIG.autoOpenOnLoad) {
+    if (document.readyState === 'complete') {
+      openModal();
+    } else {
+      window.addEventListener('load', openModal);
+    }
+  }
+})();
