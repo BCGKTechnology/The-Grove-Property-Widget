@@ -376,7 +376,62 @@ check the focus trap, and press Escape to close — before any backend exists.
 It's for visual/interaction review only — nothing submitted there sends a
 real email or CRM write.
 
-## 8. Known gaps carried over from the requirements review
+## 8. Mobile optimization
+
+`public/widget.js` switches to a real mobile full-screen layout — not a
+small floating card, an actual full-screen "sheet" that takes over the
+phone's viewport like a native app screen — rather than shrinking the same
+desktop card down to fit a phone. This kicks in under `@media
+(max-width: 768px), (hover: none) and (pointer: coarse)` — both a width
+check and a touch/coarse-pointer check, combined with OR (the comma),
+since some in-app browsers (an iMessage link preview was exactly the case
+that surfaced this) can report a wider CSS viewport than the phone's real
+screen, so pointer type is the more reliable mobile signal there.
+
+**Note on a first pass that wasn't enough:** an earlier version of this
+breakpoint used `max-height: 92vh` on the panel. That only caps a box's
+height — it doesn't force the box to actually fill that space. A flex
+column shrink-wraps to its content, so a short form (like "Email an
+Agent") only occupied as much height as its own fields needed, leaving
+the hero image visible above it instead of a true full-screen takeover.
+The fix was switching to an explicit `height: 100vh` (with a `100dvh`
+fallback layered on top for browsers that support dynamic viewport units,
+which correctly account for mobile browsers' collapsing address bars) and
+adding `flex: 1` to the scrollable body so it actively expands to fill
+whatever space is left under the header, rather than just capping out.
+
+Specific sizing, matching the numeric requirements given directly:
+- Floating action button: `72px` circle, sitting `14px` from the right
+  edge and `20px` (plus the home-indicator safe area) from the bottom —
+  large and close enough to the edge to reach with a thumb one-handed.
+- The sheet takes over the full screen edge-to-edge (`height: 100dvh`,
+  no rounded corners, no max-height cap) rather than a partial bottom
+  sheet.
+- Form inputs, selects, and textareas: `55px` minimum height (`96px` for
+  the message textarea), `16px` font size (this size specifically also
+  stops iOS Safari's automatic zoom-in when a field is focused — a
+  separate mobile papercut from tap-target sizing).
+- The submit button gets `36px` of bottom padding below it (plus the
+  home-indicator safe area on notched phones), so the CTA isn't crammed
+  against the bottom edge.
+- An additional narrower breakpoint (under 360px) stacks paired fields
+  (first/last name, tour date/time) into one column instead of squeezing
+  two inputs into a very narrow row.
+
+Verified visually with headless-browser screenshots at both a real phone
+size (390×844) and a wider in-between size (700×900) before shipping —
+in both, the sheet genuinely spans from the very top of the screen with
+no gap, and the FAB is clearly reachable in the bottom-right corner in
+the closed state.
+
+This does not rebuild "Schedule a Tour" as a custom calendar grid with
+tappable day/time cells (matching the reference screenshot's dedicated
+date-and-time picker) — it's still a native date input plus a dropdown of
+time slots, just sized comfortably for touch. Building an actual custom
+calendar/time-grid picker to match that reference exactly would be a
+separate, larger piece of work — flag if that's wanted as a follow-up.
+
+## 9. Known gaps carried over from the requirements review
 
 - **Call/Text Us → EliseAI is fully wired up and no longer a no-op.**
   `lib/eliseai.js` posts to EliseAI's `platformApi/state/create/textMe`

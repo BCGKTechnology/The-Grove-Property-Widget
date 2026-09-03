@@ -176,7 +176,7 @@
 
     .fab {
       position: fixed;
-      bottom: 24px;
+      bottom: calc(24px + env(safe-area-inset-bottom));
       right: 24px;
       width: 60px;
       height: 60px;
@@ -412,9 +412,98 @@
     }
     .send-text-row button:disabled { opacity: 0.6; cursor: default; }
 
-    @media (max-width: 420px) {
+    /* Mobile: a genuine full-screen sheet, not a shrunk-down desktop card
+       parked in the corner. Width AND coarse-pointer are both checked
+       (comma = OR) since some in-app browsers (e.g. an iMessage link
+       preview) can report a viewport wider than the physical phone screen,
+       so pointer type is a more reliable phone/tablet signal than width
+       alone in those contexts. Breakpoint is intentionally generous
+       (768px) to also cover tablets and any in-between test viewport. */
+    @media (max-width: 768px), (hover: none) and (pointer: coarse) {
+      .fab {
+        bottom: calc(20px + env(safe-area-inset-bottom));
+        right: 14px;
+        width: 72px;
+        height: 72px;
+      }
+      .fab svg { width: 34px; height: 34px; }
+
       .overlay { padding: 0; align-items: flex-end; justify-content: stretch; }
-      .panel { width: 100%; max-width: 100%; border-radius: 16px 16px 0 0; }
+
+      /* height (not just max-height) is what actually makes this a full
+         sheet — max-height alone only caps a box that still shrinks to
+         fit its own content, which is why a short form previously left
+         the hero image showing above a half-height card. Setting an
+         explicit height forces the sheet to occupy the screen regardless
+         of how much content is inside it, with the body below scrolling
+         internally if needed. 100dvh (dynamic viewport height) accounts
+         for mobile Safari's collapsing address bar; 100vh is the fallback
+         for browsers that don't support dvh yet. */
+      .panel {
+        width: 100%;
+        max-width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        max-height: none;
+        border-radius: 0;
+      }
+
+      .panel-header { padding: calc(20px + env(safe-area-inset-top)) 20px 18px; }
+      .panel-header h2 { font-size: 21px; }
+      .panel-header p { font-size: 14.5px; }
+      .panel-header.plain h2 { font-size: 19px; }
+
+      .icon-btn { top: calc(16px + env(safe-area-inset-top)); padding: 12px; }
+      .icon-btn svg { width: 24px; height: 24px; }
+      .close-btn { right: 8px; }
+      .back-btn { left: 8px; }
+
+      /* flex:1 is what lets this actually fill the rest of the sheet
+         (rather than shrink-wrapping its content) — panel is already a
+         flex column, so the header takes its natural height and this
+         takes everything left over, scrolling on its own if content runs
+         long. The 36px+ bottom padding keeps the last CTA button clear of
+         the thumb/home-indicator area rather than sitting flush against
+         the bottom edge. */
+      .panel-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 20px 20px calc(36px + env(safe-area-inset-bottom));
+        font-size: 15.5px;
+      }
+
+      .tile { padding: 18px; font-size: 16.5px; min-height: 60px; }
+      .tile .tile-icon { width: 42px; height: 42px; }
+      .tile .tile-icon svg { width: 21px; height: 21px; }
+
+      label { font-size: 14px; }
+      /* 16px stops iOS Safari from auto-zooming the page when a field is
+         focused — a mobile-specific fix, not just a size preference.
+         55px min-height is a comfortable thumb target, well above the
+         44px minimum most platform guidelines call for. */
+      input, select, textarea {
+        font-size: 16px;
+        padding: 15px 14px;
+        min-height: 55px;
+      }
+      textarea { min-height: 96px; }
+
+      .submit-btn { padding: 16px; font-size: 16.5px; min-height: 56px; margin-top: 8px; }
+
+      .send-text-row input { min-height: 55px; font-size: 16px; }
+      .send-text-row button { padding: 0 22px; font-size: 14.5px; min-height: 55px; }
+
+      .contact-phone a { font-size: 19px; }
+      .hours-table td { font-size: 15px; padding: 8px 0; }
+
+      .consent { font-size: 13px; }
+    }
+
+    /* Smallest phones only: stack paired fields (first/last name, date/time)
+       instead of squeezing two inputs into one row. */
+    @media (max-width: 360px) {
+      .field-row { flex-direction: column; }
     }
   `;
   root.appendChild(style);
