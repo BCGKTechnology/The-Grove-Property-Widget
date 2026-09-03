@@ -110,13 +110,13 @@ module.exports = async (req, res) => {
     // 1. Lead-details email -> Reffie + Chuck + Alex.
     sendEmail({
       to: config.detailsEmailRecipients,
-      subject: `New lead: ${firstName} ${lastName} — Book a Tour (${config.property.name})`,
+      subject: 'The Grove Tour Request',
       text: summaryLines.join('\n'),
     }),
     // 2. Calendar invite email -> Chuck + Alex + b.chandler.
     sendEmail({
       to: config.calendarInviteRecipients,
-      subject: `Tour scheduled: ${firstName} ${lastName} — ${tourDate} ${tourTime}`,
+      subject: 'The Grove Tour Request',
       text: summaryLines.join('\n'),
       attachments: [
         {

@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/widget.js", "destination": "/public/widget.js" }
+  ]
+}

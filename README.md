@@ -35,8 +35,11 @@ scripts/
   test-postmark.js           Sends one real test email — confirms your token + sender work
   list-attio-attributes.js   Prints your object's real attribute slugs
   test-attio.js              Creates one real test record — confirms your key + mapping work
-  build-preview.js           Regenerates preview.html from the current widget.js
+  build-preview.js           Regenerates preview.html/index.html from the current widget.js
 preview.html       Standalone visual demo (mocked network calls) — open directly in a browser
+index.html         Same file as preview.html, so opening this folder/zip previews by default
+vercel.json        Rewrites /widget.js -> /public/widget.js (required — see Section 5)
+.vercelignore      Keeps dev-only files (scripts/, .env.example) out of the public deployment
 ```
 
 ## 1. Do you need GitHub? Do you need to "deploy"?
@@ -102,6 +105,26 @@ pricing at postmarkapp.com/pricing before committing, since plans change.
 4. **Before wiring this into Vercel at all**, confirm the token works with
    `scripts/test-postmark.js` (see "Example code" below) — much faster to
    debug locally than through a deployed function.
+5. **Request approval before relying on this for real.** New Postmark
+   accounts start in **Test mode** (you'll see that label, plus a
+   "Request approval" button, in the top nav). While in Test mode, mail to
+   real outside inboxes — like Reffie's automated ingestion address — can
+   be held or blocked outright, even with a perfectly valid sender and
+   correct code. Click **Request approval** and answer its short
+   questionnaire; this is the single most likely reason a test submission
+   "doesn't arrive" with everything else configured correctly.
+
+One nuance worth understanding on sender verification: **Sender
+Signatures** (verifying one specific "from" address, e.g.
+`chuck@bcgk.com`) is enough to send today — it doesn't require the domain
+itself to show as fully authenticated. The domain-level "DKIM Not
+Verified" / "Return-Path Not Verified" flags you'll see under **Sender
+Signatures → [your domain]** are a *deliverability* improvement (mail is
+less likely to be marked spam, which matters more for an automated inbox
+like Reffie's than for a person's inbox) — not a requirement to send.
+Setting those up (the "Add a DKIM DNS record" link, or the banner's "Get
+started" flow) is worth doing before fully relying on this, but it isn't
+what's blocking a first test.
 
 ## 3. Configuring Attio properly
 
@@ -211,6 +234,20 @@ generate a fresh one.
 
 ## 5. Embed it on the live RentCafe site
 
+**Important — this requires `vercel.json` to be part of what you deployed.**
+Vercel's zero-config "Other" preset (no framework detected, which is what
+this project uses) serves every file at its literal repo path — so without
+help, `public/widget.js` is only reachable at `/public/widget.js`, not the
+`/widget.js` the rest of this README and RentCafe's snippet assume. The
+`vercel.json` in this project adds one rewrite rule to fix that:
+```json
+{ "rewrites": [{ "source": "/widget.js", "destination": "/public/widget.js" }] }
+```
+If you deployed before this file existed, or your deploy tool/step skipped
+it, `/widget.js` will 404 and nothing below will work — redeploy with
+`vercel.json` included (see "Fixing an existing deployment" below if you've
+already gone live once).
+
 `widget.js` automatically figures out which backend to talk to from its own
 `<script src="...">` URL — so once step 1's Vercel URL exists, there's no
 separate "point it at my API" step or URL to copy into the code. The whole
@@ -268,6 +305,44 @@ To confirm it's wired correctly after publishing: open your browser's dev
 tools → Network tab, submit "Email an Agent" with test info, and check that
 the request to `/email-agent` went to your real `*.vercel.app` domain (not
 `REPLACE-ME.vercel.app`) and came back with a success response.
+
+### Fixing an existing deployment (if you already deployed before `vercel.json` existed)
+
+If you deployed with `vercel` (the CLI) or by uploading a zip before this
+`vercel.json` was added, `/widget.js` is 404ing right now — this was caught
+by loading `https://YOUR-DEPLOYMENT.vercel.app/widget.js` directly and
+getting Vercel's own `404: NOT_FOUND` page instead of the script. The fix
+is just to redeploy with the current folder (which now includes
+`vercel.json` and `.vercelignore`):
+
+- **If you're using the Vercel CLI:** replace your local project folder's
+  contents with this updated one (same project — don't create a new Vercel
+  project), then run `vercel --prod` again from inside it.
+- **If you're using GitHub + Vercel's auto-deploy:** push these updated
+  files to the repo; Vercel redeploys automatically.
+
+After redeploying, re-check `https://YOUR-DEPLOYMENT.vercel.app/widget.js`
+directly in a browser tab — you should see the actual JavaScript source
+(starting with a comment block), not a 404 page. `/api/email-agent`,
+`/api/book-tour`, and `/api/call-text` were already deploying correctly
+(loading any of them directly in a browser should show
+`{"error":"Method not allowed"}`, which is the expected response to a GET —
+that's not a bug, it's the endpoint confirming it's alive and only accepts
+POST).
+
+One more thing worth knowing about this deployment style: because there's
+no framework/build step, Vercel serves *any* file in the project at its
+literal path unless it's under `api/` (which becomes a function) or listed
+in `.vercelignore`. That means `lib/config.js`, `lib/eliseai.js`, etc. are
+technically publicly readable at `https://YOUR-DEPLOYMENT.vercel.app/lib/config.js`
+and similar — nothing in them is ever a real secret (those only ever come
+from Vercel's environment variables), but it does mean things like the
+internal team email addresses in `detailsEmailRecipients` and the
+`EliseAI` building ID are visible to anyone who thinks to look. `.vercelignore`
+already keeps `scripts/`, `.env.example`, and screenshots out of the public
+deployment; fully hiding `lib/` too would need a real build step, which is
+more infrastructure than this project currently has — flagging it here as
+a known trade-off rather than leaving it undocumented.
 
 ## 6. Fix the remaining placeholders before fully going live
 
