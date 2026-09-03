@@ -25,6 +25,13 @@ parts.push('<!doctype html>');
 parts.push('<html lang="en">');
 parts.push('<head>');
 parts.push('<meta charset="utf-8" />');
+// Without this, mobile browsers render the page as a 980px-wide desktop
+// layout and auto-zoom it to fit the screen — which makes every mobile
+// CSS fix in widget.js look shrunk on a real phone even though it's
+// correct in the code. widget.js also injects this itself if a host page
+// is missing it, but the preview page gets it directly since that's the
+// realistic case (a real property page should already have this tag).
+parts.push('<meta name="viewport" content="width=device-width, initial-scale=1" />');
 parts.push('<title>Grove Widget Preview</title>');
 parts.push('<style>');
 parts.push('  body { margin:0; font-family: -apple-system, sans-serif; background:#f2efe9; }');

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Grove Widget Preview</title>
 <style>
   body { margin:0; font-family: -apple-system, sans-serif; background:#f2efe9; }
@@ -68,6 +69,35 @@
     }
   } catch (e) {
     /* fall through to the CONFIG fallback below */
+  }
+
+  // ---------------------------------------------------------------------
+  // Guarantee a correct mobile viewport, regardless of the host page.
+  // ---------------------------------------------------------------------
+  // Every @media (max-width: ...) rule below only works correctly if the
+  // page declares <meta name="viewport" content="width=device-width, ...">.
+  // Without it, mobile Safari/Chrome fall back to treating the page as a
+  // 980px-wide desktop layout and then auto-zoom the ENTIRE page out to fit
+  // the real screen (e.g. ~45% zoom on a 440px-wide iPhone) — our media
+  // queries can still technically match (via the pointer:coarse check), but
+  // everything they size (the FAB, tap targets, fonts) gets rendered at
+  // roughly half scale because the whole page is shrunk, not just measured
+  // correctly. This was diagnosed directly: on a real iPhone-sized viewport
+  // with no viewport meta tag, window.visualViewport.scale came back as
+  // ~0.45 instead of 1. We don't control RentCafe's page <head>, so rather
+  // than assume it has this tag, we add it ourselves if it's missing —
+  // this is a page-wide fix (not just our widget) but is exactly what a
+  // correctly-configured mobile page should have anyway, and we only add
+  // it when one isn't already present so we never override a real one.
+  try {
+    if (!document.querySelector('meta[name="viewport"]')) {
+      const viewportMeta = document.createElement('meta');
+      viewportMeta.setAttribute('name', 'viewport');
+      viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1');
+      document.head.appendChild(viewportMeta);
+    }
+  } catch (e) {
+    /* non-fatal — worst case the host page's own viewport handling applies */
   }
 
   // ---------------------------------------------------------------------
