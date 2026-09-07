@@ -374,7 +374,43 @@ inlines the real widget code with network calls mocked, on a stand-in page,
 so you can click through the FAB, all three tiles, tab through a form to
 check the focus trap, and press Escape to close — before any backend exists.
 It's for visual/interaction review only — nothing submitted there sends a
-real email or CRM write.
+real email or CRM write, no matter how it looks (it still shows a "Sent ✓"
+success state, since that's part of testing the UI).
+
+**This file is intentionally excluded from the Vercel deployment
+(`.vercelignore`) — do not remove that exclusion.** It used to also get
+deployed alongside everything else, which meant it was quietly served as
+the live production site's root page (Vercel serves `index.html` at `/` by
+default). That caused a real incident: a test done by visiting the live
+`*.vercel.app` URL directly was actually hitting this mocked page, not the
+real widget — so it showed a normal-looking "Sent ✓" success message while
+never once calling Postmark, Attio, or even reaching the Vercel function
+logs. Every integration looked totally silent (0 emails in Postmark, 0
+requests in Vercel logs, 0 records in Attio) simply because nothing had
+actually been sent anywhere. After excluding `preview.html`/`index.html`
+from deployment, visiting the bare production root URL correctly 404s —
+that's expected, not a bug, since RentCafe never loads anything from that
+path; it only ever loads `/widget.js` and posts to `/api/*`.
+
+**The correct way to test the real, live backend** — without needing the
+widget embedded on RentCafe yet — is to send a request straight to a live
+API endpoint. This is a real send: it will email all 3 real recipients and
+create a real Attio record, so only run it when you're actually ready to
+verify delivery. From a terminal (Mac's built-in Terminal app works):
+
+```bash
+curl -X POST https://YOUR-DEPLOYMENT.vercel.app/api/email-agent \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Test","lastName":"Delivery","email":"you@example.com","phone":"555-555-5555","message":"Real backend test — safe to ignore."}'
+```
+
+A `{"ok":true}` response only tells you the function ran without throwing —
+it does **not** guarantee the email itself was delivered, since the
+endpoint still reports success if Attio's write succeeds even when email
+fails (see the "known gaps" note on partial-failure handling). To confirm
+delivery specifically, check Postmark's Activity page for that server
+right after running this — the message should appear there immediately,
+regardless of whether it lands in an inbox or spam a moment later.
 
 ## 8. Mobile optimization
 
@@ -423,6 +459,29 @@ size (390×844) and a wider in-between size (700×900) before shipping —
 in both, the sheet genuinely spans from the very top of the screen with
 no gap, and the FAB is clearly reachable in the bottom-right corner in
 the closed state.
+
+**A second, separate mobile bug found afterward: the missing viewport
+meta tag.** Even with all of the above correct, a real iPhone still
+rendered everything shrunk to roughly half size. The cause had nothing
+to do with the CSS sizing above — it's that a page needs `<meta
+name="viewport" content="width=device-width, initial-scale=1">` in its
+`<head>` for a mobile browser to treat 1 CSS pixel as 1 device-independent
+pixel. Without it, mobile Safari/Chrome assume the page is a 980px-wide
+desktop layout and auto-zoom the *entire page* down to fit the real
+screen — confirmed directly with `window.visualViewport.scale`, which
+came back `0.449` on a 440px-wide iPhone viewport with no viewport meta
+tag present, and `1` once it was added. Every size in the mobile CSS
+above (72px FAB, 55px inputs, etc.) was correct in the code the whole
+time; it was just being rendered at ~45% scale.
+
+We don't control the `<head>` of whatever RentCafe page this gets
+embedded into, so `widget.js` now checks for an existing `<meta
+name="viewport">` tag on page load and adds one itself
+(`width=device-width, initial-scale=1`) if none is present — this fixes
+mobile rendering regardless of whether the host page remembered to set
+it, and never touches an existing tag if the page already has one.
+`preview.html`/`index.html` also now include this tag directly, since a
+real property page should have it anyway.
 
 This does not rebuild "Schedule a Tour" as a custom calendar grid with
 tappable day/time cells (matching the reference screenshot's dedicated
