@@ -127,7 +127,20 @@
     ],
 
     // Whether the modal auto-opens on every page load (confirmed decision).
+    // Desktop/tablet only as of 2026-09-08 — see autoOpenSuppressMaxWidth.
     autoOpenOnLoad: true,
+
+    // At this width and below, auto-open is suppressed even when
+    // autoOpenOnLoad is true — confirmed 2026-09-08: on phones, the modal
+    // covering the entire screen on every single page load (with no page
+    // content visible underneath) was worse than just landing on the page
+    // and letting the visitor open the widget via the FAB when they
+    // actually want it. Desktop/tablet (768px and up) keeps auto-opening as
+    // originally decided. This is intentionally a separate number from the
+    // 768px mobile *styling* breakpoint elsewhere in this file — that one
+    // includes 768px itself so an iPad-portrait-width screen still gets the
+    // touch-optimized layout, even though at that width it keeps auto-open.
+    autoOpenSuppressMaxWidth: 767,
   };
 
   function formatTime(hhmm) {
@@ -898,16 +911,24 @@
     }
   }
 
-  fab.addEventListener('click', openModal);
+    fab.addEventListener('click', openModal);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) closeModal();
   });
 
   // ---------------------------------------------------------------------
   // Auto-open on every page load (confirmed behavior — see requirements doc
-  // for the tradeoffs of this choice).
+  // for the tradeoffs of this choice) — except on mobile widths, where it's
+  // suppressed (confirmed 2026-09-08, see CONFIG.autoOpenSuppressMaxWidth).
+  // Checked once at load time, not on resize/orientation-change — this is a
+  // one-time "how did this visitor arrive" decision, not something that
+  // should retroactively pop the modal open if a desktop window gets
+  // resized narrower after the page has already loaded.
   // ---------------------------------------------------------------------
-  if (CONFIG.autoOpenOnLoad) {
+  const isMobileWidth = window.matchMedia(
+    `(max-width: ${CONFIG.autoOpenSuppressMaxWidth}px)`
+  ).matches;
+  if (CONFIG.autoOpenOnLoad && !isMobileWidth) {
     if (document.readyState === 'complete') {
       openModal();
     } else {
