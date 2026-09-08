@@ -57,7 +57,7 @@ module.exports = async (req, res) => {
 
   const results = await Promise.allSettled([
     sendEmail({
-      to: config.detailsEmailRecipients,
+      to: config.emailRecipients,
       subject: `New lead: ${phone} — Call or Text Us (${config.property.name})`,
       text: summaryLines.join('\n'),
     }),
