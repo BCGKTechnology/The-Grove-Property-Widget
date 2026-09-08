@@ -2,11 +2,9 @@
  * POST /api/book-tour
  *
  * Handles "Book a Tour" submissions:
- *  1. Emails the lead details to the Reffie ingestion inbox + the BCGK team
- *     (same recipients as "Email an Agent").
- *  2. Emails a calendar invite (.ics attachment) to chuck, alex, and
- *     b.chandler — a separate, smaller recipient list per the spec.
- *  3. Writes a lead record to Attio.
+ *  1. Emails the lead details, with the calendar invite (.ics) attached, to
+ *     the same 4 recipients as every other workflow (config.emailRecipients).
+ *  2. Writes a lead record to Attio.
  *
  * Body: {
  *   firstName, lastName, email, phone, bedroomPreference, hearAboutUs,
@@ -29,10 +27,18 @@ const { applyCors } = require('../lib/cors');
 const { zonedTimeToUtc } = require('../lib/timezone');
 
 function parseTourDateTime(tourDate, tourTime) {
-  // Interprets tourDate/tourTime as wall-clock time in the property's own
-  // time zone (config.property.timezone), converted correctly to UTC
-  // regardless of what time zone the server itself runs in.
   return zonedTimeToUtc(tourDate, tourTime, config.property.timezone);
+}
+
+// tourTime arrives as 24-hour "HH:MM" (that's what the <select> submits —
+// see public/widget.js's own formatTime, which only reformats the dropdown
+// LABEL, not the value). Without this, the email summary below showed the
+// raw value ("14:00") instead of a human-readable time ("2:00 PM").
+function formatTourTime(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 module.exports = async (req, res) => {
@@ -81,7 +87,7 @@ module.exports = async (req, res) => {
     `Name: ${firstName} ${lastName}`,
     `Email: ${email}`,
     `Phone: ${phone}`,
-    `Requested tour: ${tourDate} at ${tourTime} (community local time)`,
+    `Requested tour: ${tourDate} at ${formatTourTime(tourTime)} (community local time)`,
     bedroomPreference ? `Bedroom preference: ${bedroomPreference}` : null,
     hearAboutUs ? `How they heard about us: ${hearAboutUs}` : null,
   ].filter(Boolean);
@@ -101,21 +107,18 @@ module.exports = async (req, res) => {
     start,
     durationMinutes: 30,
     organizerEmail: config.fromEmail,
-    attendeeEmails: config.calendarInviteRecipients,
+    attendeeEmails: config.emailRecipients,
   });
 
   const icsBase64 = Buffer.from(icsContent, 'utf-8').toString('base64');
 
   const results = await Promise.allSettled([
-    // 1. Lead-details email -> Reffie + Chuck + Alex.
+    // One email — lead details + calendar invite together — to all 4
+    // recipients. This used to be two separate emails to two different
+    // lists; consolidated into one send since both lists became the same
+    // 4 people.
     sendEmail({
-      to: config.detailsEmailRecipients,
-      subject: 'The Grove Tour Request',
-      text: summaryLines.join('\n'),
-    }),
-    // 2. Calendar invite email -> Chuck + Alex + b.chandler.
-    sendEmail({
-      to: config.calendarInviteRecipients,
+      to: config.emailRecipients,
       subject: 'The Grove Tour Request',
       text: summaryLines.join('\n'),
       attachments: [
@@ -126,7 +129,6 @@ module.exports = async (req, res) => {
         },
       ],
     }),
-    // 3. Attio record.
     createLeadRecord({
       firstName,
       lastName,
@@ -141,13 +143,10 @@ module.exports = async (req, res) => {
     }),
   ]);
 
-  const [detailsEmail, calendarEmail, attioResult] = results;
+  const [emailResult, attioResult] = results;
 
-  if (detailsEmail.status === 'rejected') {
-    console.error('book-tour: failed to send details email', detailsEmail.reason);
-  }
-  if (calendarEmail.status === 'rejected') {
-    console.error('book-tour: failed to send calendar invite', calendarEmail.reason);
+  if (emailResult.status === 'rejected') {
+    console.error('book-tour: failed to send email', emailResult.reason);
   }
   if (attioResult.status === 'rejected') {
     console.error('book-tour: failed to write to Attio', attioResult.reason);
