@@ -1,0 +1,30 @@
+# Vercel's zero-config "Other" preset (no framework detected) serves every
+# file in this project at its literal repo path unless it's ignored here or
+# lives under api/ (which becomes serverless functions instead). That means
+# without this file, things like scripts/test-attio.js or .env.example would
+# be publicly readable at https://your-deployment.vercel.app/scripts/test-attio.js
+# etc. None of these contain real secrets (see lib/config.js's own header
+# comment — nothing in the source is ever a real key), but they're
+# developer-only tooling with no reason to be public.
+#
+# Do NOT add lib/ here — api/*.js requires('../lib/...') at runtime, and
+# ignoring it here would remove it from the deployment entirely, breaking
+# every endpoint.
+
+scripts/
+.env.example
+*.png
+
+# preview.html / index.html are the local, double-click-to-open demo page
+# (built by scripts/build-preview.js) that fakes every form submission on
+# purpose, so the widget can be clicked around with no backend running.
+# They must NOT be deployed: because Vercel serves index.html at the site
+# root by default, leaving this in meant the LIVE production URL was
+# silently serving the mocked demo instead of a real page — anyone testing
+# by visiting that URL directly got a fake "Sent" response with no email,
+# no Attio write, and no server-side request at all, which is exactly what
+# happened during a real test. Nothing needs to be served at the production
+# root anyway (RentCafe only ever loads /widget.js and calls /api/*), so a
+# 404 there after this change is correct, expected behavior.
+preview.html
+index.html
