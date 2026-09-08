@@ -137,7 +137,7 @@ module.exports = async (req, res) => {
       bedroomPreference,
       hearAboutUs,
       tourDate,
-      tourTime,
+      tourTime: formatTourTime(tourTime),
       leadSource: 'Book a Tour',
       property: config.property.name,
     }),
