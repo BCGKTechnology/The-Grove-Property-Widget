@@ -642,8 +642,14 @@
       options.map((o) => `<option value="${o}">${o}</option>`).join('')
     );
   }
-
-  async function submitForm({ endpoint, payload, submitBtn, statusEl, successMessage }) {
+ // `gtmEvent` (optional) is pushed to window.dataLayer only on a confirmed
+  // successful submission (res.ok) — not on every click/attempt — since
+  // these back a GTM conversion trigger for each form (added 2026-09-22,
+  // event names given directly by BCGK): "tour_form_submitted" for Schedule
+  // a Tour, "contact_form_submitted" for Contact Our Leasing Team (the
+  // Call/Text Us view's "Send Us a Text" form), "email_agent_submitted" for
+  // Email an Agent.
+  async function submitForm({ endpoint, payload, submitBtn, statusEl, successMessage, gtmEvent }) {
     submitBtn.disabled = true;
     const originalLabel = submitBtn.textContent;
     submitBtn.textContent = 'Sending…';
@@ -665,6 +671,16 @@
       statusEl.className = 'status-msg success';
       statusEl.hidden = false;
       submitBtn.textContent = 'Sent ✓';
+
+      if (gtmEvent) {
+        try {
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({ event: gtmEvent });
+        } catch (gtmErr) {
+          /* non-fatal — GTM/dataLayer issues should never block a
+             successful submission from showing as successful */
+        }
+      }
     } catch (err) {
       statusEl.textContent =
         err.message || 'We could not send that. Please call or text us instead.';
@@ -726,6 +742,7 @@
         submitBtn,
         statusEl,
         successMessage: "Thanks! An agent will be in touch shortly.",
+        gtmEvent: 'email_agent_submitted',
       });
     });
   }
@@ -800,6 +817,7 @@
         submitBtn,
         statusEl,
         successMessage: 'Tour requested! A confirmation email is on its way.',
+        gtmEvent: 'tour_form_submitted',
       });
     });
   }
@@ -859,12 +877,13 @@
       } catch (err) {
         data.queryParams = {};
       }
-      submitForm({
+       submitForm({
         endpoint: '/api/call-text',
         payload: data,
         submitBtn,
         statusEl,
         successMessage: "Thanks! We'll text or call you shortly.",
+        gtmEvent: 'contact_form_submitted',
       });
     });
   }
